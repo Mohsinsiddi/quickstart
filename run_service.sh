@@ -18,6 +18,8 @@
 #
 # ------------------------------------------------------------------------------
 
+export PYTHONIOENCODING=utf-8
+
 # Convert Hex to Dec
 hex_to_decimal() {
     $PYTHON_CMD -c "print(int('$1', 16))"
