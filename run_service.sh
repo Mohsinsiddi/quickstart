@@ -229,7 +229,7 @@ add_volume_to_service_docker_compose() {
     fi
 
     # Check if the service exists in the Docker Compose file
-    if ! grep -q "^[[:space:]]*${service_name}:" "$compose_file"; then
+    if ! grep -q "*${service_name}:" "$compose_file"; then
         echo "Service '$service_name' not found in '$compose_file'."
         return 1
     fi
@@ -1333,7 +1333,7 @@ cd ..
 # warm start is disabled as no global weights are provided to calibrate the tools' weights
 # warm_start
 
-add_volume_to_service_docker_compose "$PWD/trader_service/abci_build/docker-compose.yaml" "trader_abci_0" "/data" "$path_to_store"
+add_volume_to_service_docker_compose "$PWD/trader_service/abci_build/docker-compose.yaml" "abci_0" "/data" "$path_to_store"
 add_volume_to_service_k8s "$PWD/trader_service/abci_build_k8s/build.yaml"
 sudo chown -R $(whoami) "$path_to_store"
 
