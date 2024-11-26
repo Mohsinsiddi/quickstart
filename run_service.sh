@@ -1321,11 +1321,11 @@ if [[ -d "$build_dir_k8s" ]]; then
     sudo rm -rf "$build_dir_k8s"
     echo "Directory removed: $build_dir"
 fi
-export OPEN_AUTONOMY_PRIVATE_KEY_PASSWORD="$password" && poetry run autonomy deploy build --kubernetes "../../$keys_json_path" --n $n_agents -ltm
+export OPEN_AUTONOMY_PRIVATE_KEY_PASSWORD="$password" && poetry run autonomy deploy build --kubernetes "../../$keys_json_path" --n $n_agents -ltm --o abci_build
 mv $build_dir $build_dir_k8s
 echo "Kubernetes deployment built on ./trader/$service_dir/$build_dir_k8s"
 
-export OPEN_AUTONOMY_PRIVATE_KEY_PASSWORD="$password" && poetry run autonomy deploy build "../../$keys_json_path" --n $n_agents -ltm
+export OPEN_AUTONOMY_PRIVATE_KEY_PASSWORD="$password" && poetry run autonomy deploy build "../../$keys_json_path" --n $n_agents -ltm --o abci_build
 echo "Docker Compose deployment built on ./trader/$service_dir/$build_dir"
 
 cd ..
