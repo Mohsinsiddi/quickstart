@@ -4,13 +4,12 @@
 import re
 import sys
 import logging
-import pexpect
+import pexpect 
 import os
 import time
 import pytest
 import tempfile
 import shutil
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -38,11 +37,10 @@ def get_service_config(config_path: str) -> dict:
     """Get service-specific configuration."""
     if "modius" in config_path.lower():
         return {
-            "container_name": "optimus",  # Update with actual Modius container name
-            "health_check_url": HEALTH_CHECK_URL,  # Update with actual Modius health endpoint
+            "container_name": "optimus",
+            "health_check_url": HEALTH_CHECK_URL,
         }
     else:
-        # Default PredictTrader config
         return {
             "container_name": "traderpearl",
             "health_check_url": HEALTH_CHECK_URL,
@@ -61,7 +59,6 @@ def check_docker_status(logger: logging.Logger, config_path: str) -> bool:
         try:
             client = docker.from_env()
             
-            # Check all containers, including stopped ones
             all_containers = client.containers.list(all=True, filters={"name": container_name})
             running_containers = client.containers.list(filters={"name": container_name})
             
@@ -73,17 +70,13 @@ def check_docker_status(logger: logging.Logger, config_path: str) -> bool:
                 time.sleep(retry_delay)
                 continue
             
-            # Log status of all containers
             for container in all_containers:
                 logger.info(f"Container {container.name} status: {container.status}")
                 
                 if container.status == "exited":
-                    # Get exit code
                     inspect = client.api.inspect_container(container.id)
                     exit_code = inspect['State']['ExitCode']
                     logger.error(f"Container {container.name} exited with code {exit_code}")
-                    
-                    # Get last logs
                     logs = container.logs(tail=50).decode('utf-8')
                     logger.error(f"Container logs:\n{logs}")
                 
@@ -92,7 +85,6 @@ def check_docker_status(logger: logging.Logger, config_path: str) -> bool:
                     logs = container.logs(tail=50).decode('utf-8')
                     logger.error(f"Container logs:\n{logs}")
             
-            # Check if all required containers are running
             if not running_containers:
                 if attempt == max_retries - 1:
                     return False
@@ -100,7 +92,6 @@ def check_docker_status(logger: logging.Logger, config_path: str) -> bool:
                 time.sleep(retry_delay)
                 continue
             
-            # Verify all running containers are actually running
             all_running = all(c.status == "running" for c in running_containers)
             if all_running:
                 logger.info(f"All {container_name} containers are running")
@@ -163,31 +154,12 @@ def check_service_health(logger: logging.Logger, config_path: str) -> tuple[bool
             logger.error(f"Unexpected error in health check: {str(e)}")
             return False, metrics
             
-        # Wait for remaining time in 5-second interval
         elapsed = time.time() - start_time
         if elapsed < 5:
             time.sleep(5 - elapsed)
     
     logger.info(f"Health check completed successfully - {metrics['successful_checks']} checks passed")
-    return True, metrics
-
-def check_shutdown_logs(logger: logging.Logger) -> bool:
-    """Check shutdown logs for errors."""
-    try:
-        client = docker.from_env()
-        containers = client.containers.list(filters={"name": "traderpearl"})
-        
-        for container in containers:
-            logs = container.logs().decode('utf-8')
-            if "Error during shutdown" in logs or "Failed to gracefully stop" in logs:
-                logger.error(f"Found shutdown errors in container {container.name} logs")
-                return False
-                
-        logger.info("Shutdown logs check passed")
-        return True
-    except Exception as e:
-        logger.error(f"Error checking shutdown logs: {str(e)}")
-        return False
+    return True, metrics    
 
 def get_token_config():
     """Get token configurations"""
@@ -196,12 +168,11 @@ def get_token_config():
             "address": "0xd988097fb8612cc24eeC14542bC03424c656005f",
             "decimals": 6
         },
-        # Add other tokens as needed
         "OLAS": {
             "address": "your_olas_address",
             "decimals": 18
         }
-    }    
+    }
 
 def handle_erc20_funding(output: str, logger: logging.Logger, rpc_url: str) -> str:
     """Handle funding requirement using Tenderly API for ERC20 tokens."""
@@ -213,7 +184,6 @@ def handle_erc20_funding(output: str, logger: logging.Logger, rpc_url: str) -> s
         required_amount = float(match.group(2))
         token_symbol = match.group(3)
         
-        # Get token configuration
         token_configs = get_token_config()
         if token_symbol not in token_configs:
             raise Exception(f"Token {token_symbol} not configured")
@@ -223,7 +193,6 @@ def handle_erc20_funding(output: str, logger: logging.Logger, rpc_url: str) -> s
         decimals = token_config["decimals"]
         
         try:
-            # Convert amount to token units based on decimals
             amount_in_units = int(required_amount * (10 ** decimals))
             amount_hex = hex(amount_in_units)
             
@@ -244,7 +213,6 @@ def handle_erc20_funding(output: str, logger: logging.Logger, rpc_url: str) -> s
                     
                 logger.info(f"Successfully funded {required_amount} {token_symbol} to {wallet_address}")
                 
-                # Verify balance using Web3
                 try:
                     w3 = Web3(Web3.HTTPProvider(rpc_url))
                     erc20_abi = [
@@ -272,14 +240,8 @@ def handle_erc20_funding(output: str, logger: logging.Logger, rpc_url: str) -> s
     
     return ""
 
-def create_token_funding_handler(rpc_url: str):
-    """Create a token funding handler with the specified RPC URL."""
-    def handler(output: str, logger: logging.Logger) -> str:
-        return handle_erc20_funding(output, logger, rpc_url)
-    return handler
-
 def handle_native_funding(output: str, logger: logging.Logger, rpc_url: str, config_type: str = "") -> str:
-    """Handle funding requirement using Tenderly API for any native token."""
+    """Handle funding requirement using Tenderly API for native tokens."""
     patterns = [
         r"Please make sure Master EOA (0x[a-fA-F0-9]{40}) has at least (\d+\.\d+) (?:ETH|xDAI)",
         r"Please make sure Master Safe (0x[a-fA-F0-9]{40}) has at least (\d+\.\d+) (?:ETH|xDAI)"
@@ -292,7 +254,6 @@ def handle_native_funding(output: str, logger: logging.Logger, rpc_url: str, con
             required_amount = float(match.group(2))
             wallet_type = "EOA" if "EOA" in pattern else "Safe"
             
-            # Add buffer for Modius
             if "modius" in config_type.lower():
                 original_amount = required_amount
                 required_amount = 0.6  # Fixed amount for Modius
@@ -318,7 +279,6 @@ def handle_native_funding(output: str, logger: logging.Logger, rpc_url: str, con
                     if 'error' in result:
                         raise Exception(f"Tenderly API error: {result['error']}")
                         
-                    # Get token name from the chain ID
                     chain_id = w3.eth.chain_id
                     token_name = "ETH" if chain_id in [1, 5, 11155111] else "xDAI"
                     
@@ -341,6 +301,34 @@ def create_funding_handler(rpc_url: str, config_type: str):
         return handle_native_funding(output, logger, rpc_url, config_type)
     return handler
 
+def create_token_funding_handler(rpc_url: str):
+    """Create a token funding handler with the specified RPC URL."""
+    def handler(output: str, logger: logging.Logger) -> str:
+        return handle_erc20_funding(output, logger, rpc_url)
+    return handler
+
+
+def check_shutdown_logs(logger: logging.Logger, config_path: str) -> bool:
+    """Check shutdown logs for errors."""
+    try:
+        client = docker.from_env()
+        service_config = get_service_config(config_path)
+        container_name = service_config["container_name"]
+        
+        containers = client.containers.list(filters={"name": container_name})
+        
+        for container in containers:
+            logs = container.logs().decode('utf-8')
+            if "Error during shutdown" in logs or "Failed to gracefully stop" in logs:
+                logger.error(f"Found shutdown errors in container {container.name} logs")
+                return False
+                
+        logger.info("Shutdown logs check passed")
+        return True
+    except Exception as e:
+        logger.error(f"Error checking shutdown logs: {str(e)}")
+        return False
+
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with colors."""
     def format(self, record):
@@ -361,9 +349,16 @@ def setup_logging(log_file: Optional[Path] = None) -> logging.Logger:
     logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)
     
+    # Get the logger
     logger = logging.getLogger('test_runner')
+    
+    # Remove any existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
     logger.setLevel(logging.DEBUG)
     
+    # Only add console handler if none exists
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
     console_formatter = ColoredFormatter(
@@ -396,7 +391,6 @@ def get_config_files():
     if not config_files:
         raise FileNotFoundError("No JSON config files found in configs directory")
     
-    # Log found configs
     logger = logging.getLogger('test_runner')
     logger.info(f"Found config files: {[f.name for f in config_files]}")
     
@@ -404,7 +398,6 @@ def get_config_files():
 
 def get_config_specific_settings(config_path: str) -> dict:
     """Get config specific prompts and test settings."""
-
     if "modius" in config_path.lower():
         # Modius specific settings
         test_config = {
@@ -417,7 +410,6 @@ def get_config_specific_settings(config_path: str) -> dict:
         funding_handler = create_funding_handler(test_config["RPC_URL"], "modius")
         token_funding_handler = create_token_funding_handler(test_config["RPC_URL"])
 
-        # Modius specific prompts
         prompts = {
             r"eth_newFilter \[hidden input\]": test_config["RPC_URL"],
             "input your password": test_config["TEST_PASSWORD"],
@@ -427,16 +419,22 @@ def get_config_specific_settings(config_path: str) -> dict:
             "Press enter to continue": "\n",
             "press enter": "\n",
             r"Enter local user account password \[hidden input\]": test_config["TEST_PASSWORD"],
-            "Please enter Tenderly":"\n",
-            "Please enter Coingecko API Key":"\n",
+            "Please enter Tenderly": "\n",
+            "Please enter Coingecko API Key": "\n",
             r"Please make sure Master (EOA|Safe) .*has at least.*(?:ETH|xDAI)": funding_handler,
             r"Please make sure Master (?:EOA|Safe) .*has at least.*(?:USDC|OLAS)": token_funding_handler,
         }
-        
     else:
-        # Use existing PredictTrader settings
-        test_config = TEST_CONFIG
+        # Default PredictTrader settings
+        test_config = {
+            "RPC_URL": os.getenv('RPC_URL', ''),
+            "BACKUP_WALLET": os.getenv('BACKUP_WALLET', '0x4e9a8fE0e0499c58a53d3C2A2dE25aaCF9b925A8'),
+            "TEST_PASSWORD": os.getenv('TEST_PASSWORD', ''),
+            "STAKING_CHOICE": os.getenv('STAKING_CHOICE', '1')
+        }
+
         funding_handler = create_funding_handler(test_config["RPC_URL"], "predict_trader")
+
         prompts = {
             r"eth_newFilter \[hidden input\]": test_config["RPC_URL"],
             "input your password": test_config["TEST_PASSWORD"],
@@ -451,33 +449,16 @@ def get_config_specific_settings(config_path: str) -> dict:
 
     return {"prompts": prompts, "test_config": test_config}
 
-# Test Configuration
-TEST_CONFIG = {
-    "RPC_URL": os.getenv('RPC_URL', ''),
-    "BACKUP_WALLET": os.getenv('BACKUP_WALLET', '0x4e9a8fE0e0499c58a53d3C2A2dE25aaCF9b925A8'),
-    "TEST_PASSWORD": os.getenv('TEST_PASSWORD', ''),
-    "STAKING_CHOICE": os.getenv('STAKING_CHOICE', '1')
-}
-
-# # Expected prompts and their responses for PredictTrader
-# PROMPTS = {
-#     r"eth_newFilter \[hidden input\]": TEST_CONFIG["RPC_URL"],
-#     "input your password": TEST_CONFIG["TEST_PASSWORD"],
-#     "confirm your password": TEST_CONFIG["TEST_PASSWORD"],
-#     "Enter your choice": TEST_CONFIG["STAKING_CHOICE"],
-#     "backup owner": TEST_CONFIG["BACKUP_WALLET"],
-#     "Press enter to continue": "\n",
-#     "press enter": "\n",
-#     "Please make sure Master (EOA|Safe) .*has at least.*xDAI": funding_handler,
-#     r"Enter local user account password \[hidden input\]": TEST_CONFIG["TEST_PASSWORD"]
-# }
-
 class BaseTestService:
     """Base test service class containing core test logic."""
     config_path = None
     config_settings = None
     logger = None
-    _setup_complete = False  # Add class variable to track setup state
+    child = None
+    temp_dir = None
+    original_cwd = None
+    temp_env = None
+    _setup_complete = False
 
     @classmethod
     def setup_class(cls):
@@ -493,81 +474,104 @@ class BaseTestService:
         # Create temporary directory and store original path
         cls.original_cwd = os.getcwd()
         cls.temp_dir = tempfile.TemporaryDirectory(prefix='operate_test_')
-
-        cls._setup_complete = True
+        cls.logger.info(f"Created temporary directory: {cls.temp_dir.name}")
         
-        # Copy project files
+        # Define exclusion patterns
         exclude_patterns = [
-            '.git',
-            '.pytest_cache',
-            '__pycache__',
-            '*.pyc',
-            '.operate',
-            'logs',
-            '*.log',
-            '.env'
+            '.git',              # Git directory
+            '.pytest_cache',     # Pytest cache
+            '__pycache__',      # Python cache
+            '*.pyc',            # Python compiled files
+            'logs',             # Log files
+            '*.log',            # Log files
+            '.env'              # Environment files
         ]
         
         def ignore_patterns(path, names):
             return set(n for n in names if any(p in n or any(p.endswith(n) for p in exclude_patterns) for p in exclude_patterns))
         
+        # Copy project files to temp directory
         shutil.copytree(cls.original_cwd, cls.temp_dir.name, dirs_exist_ok=True, ignore=ignore_patterns)
         
+        # Copy .git directory if it exists
         git_dir = Path(cls.original_cwd) / '.git'
         if git_dir.exists():
             shutil.copytree(git_dir, Path(cls.temp_dir.name) / '.git', symlinks=True)    
             
+        # Switch to temporary directory
         os.chdir(cls.temp_dir.name)
+        cls.logger.info(f"Changed working directory to: {cls.temp_dir.name}")
         
+        # Setup environment
         cls._setup_environment()
         
         # Start the service
         cls.start_service()
         time.sleep(STARTUP_WAIT)
+        
+        cls._setup_complete = True
 
     @classmethod
     def _setup_environment(cls):
         """Setup environment for tests"""
         cls.logger.info("Setting up test environment...")
-
+        
         venv_path = os.environ.get('VIRTUAL_ENV')
         
-        # Create a clean environment without virtualenv variables
         cls.temp_env = os.environ.copy()
         cls.temp_env.pop('VIRTUAL_ENV', None)
         cls.temp_env.pop('POETRY_ACTIVE', None)
         
         if venv_path:
-            # Get site-packages path
             if os.name == 'nt':  # Windows
                 site_packages = Path(venv_path) / 'Lib' / 'site-packages'
             else:  # Unix-like
                 site_packages = list(Path(venv_path).glob('lib/python*/site-packages'))[0]
                 
-            # Add site-packages to PYTHONPATH
             pythonpath = cls.temp_env.get('PYTHONPATH', '')
             cls.temp_env['PYTHONPATH'] = f"{site_packages}:{pythonpath}" if pythonpath else str(site_packages)
             
-            # Remove virtualenv path from PATH
             paths = cls.temp_env['PATH'].split(os.pathsep)
             paths = [p for p in paths if not p.startswith(str(venv_path))]
             cls.temp_env['PATH'] = os.pathsep.join(paths)
-            
         else:
             cls.logger.warning("No virtualenv detected")
-
+            
         cls.logger.info("Environment setup completed")
-    
+
     @classmethod
     def teardown_class(cls):
         """Cleanup after all tests"""
         try:
             cls.logger.info("Starting test cleanup...")
+            
+            # Always try to stop the service first
+            try:
+                cls.stop_service()
+                time.sleep(CONTAINER_STOP_WAIT)  # Give containers time to stop
+                
+                # Verify all containers are stopped
+                client = docker.from_env()
+                service_config = get_service_config(cls.config_path)
+                container_name = service_config["container_name"]
+                containers = client.containers.list(filters={"name": container_name})
+                
+                if containers:
+                    cls.logger.warning(f"Found running containers after stop_service, forcing removal...")
+                    for container in containers:
+                        container.stop(timeout=30)
+                        container.remove()
+            except Exception as e:
+                cls.logger.error(f"Error stopping service: {str(e)}")
+            
+            # Clean up resources
             os.chdir(cls.original_cwd)
-            cls.temp_dir.cleanup()
+            if cls.temp_dir:
+                cls.temp_dir.cleanup()
+                
             cls.logger.info("Cleanup completed successfully")
             cls._setup_complete = False
-
+            
         except Exception as e:
             cls.logger.error(f"Error during cleanup: {str(e)}")
 
@@ -577,7 +581,6 @@ class BaseTestService:
         try:
             cls.logger.info(f"Starting run_service.py test with config: {cls.config_path}")
             
-            # Start the process with pexpect
             cls.child = pexpect.spawn(
                 f'bash ./run_service.sh {cls.config_path}',
                 encoding='utf-8',
@@ -586,9 +589,9 @@ class BaseTestService:
                 cwd="."
             )
             
-            cls.child.logfile = sys.stdout
+            # Redirect pexpect logging to debug level only
+            cls.child.logfile = None  # Disable direct stdout logging
             
-            # Handle the interaction using config specific prompts
             try:
                 while True:
                     patterns = list(cls.config_settings["prompts"].keys())
@@ -604,6 +607,8 @@ class BaseTestService:
 
                     if "password" in pattern.lower():
                         cls.logger.info("Sending: [HIDDEN]", extra={'is_input': True})
+                    elif "eth_newfilter" in pattern.lower():
+                        cls.logger.info("Sending: [HIDDEN RPC URL]", extra={'is_input': True})
                     else:
                         cls.logger.info(f"Sending: {response}", extra={'is_input': True})
                     
@@ -611,12 +616,8 @@ class BaseTestService:
                     
             except pexpect.EOF:
                 cls.logger.info("Initial setup completed")
-                
-                # Add delay to ensure services are up
                 time.sleep(SERVICE_INIT_WAIT)
                 
-                # Verify Docker containers are running
-           
                 retries = 5
                 while retries > 0:
                     if check_docker_status(cls.logger, cls.config_path):
@@ -625,7 +626,6 @@ class BaseTestService:
                     retries -= 1
 
                 if retries == 0:
-                    # Get service config to use in error message
                     service_config = get_service_config(cls.config_path)
                     container_name = service_config["container_name"]
                     raise Exception(f"{container_name} containers failed to start")
@@ -640,58 +640,104 @@ class BaseTestService:
 
     @classmethod
     def stop_service(cls):
-        """Stop the service"""
+        """Stop the service ensuring we're in temp directory"""
         cls.logger.info("Stopping service...")
-        process = pexpect.spawn(f'bash ./stop_service.sh {cls.config_path}', encoding='utf-8', timeout=30)
+        if hasattr(cls, 'temp_dir') and cls.temp_dir:
+            stop_dir = cls.temp_dir.name
+        else:
+            stop_dir = os.getcwd()
+            
+        process = pexpect.spawn(
+            f'bash ./stop_service.sh {cls.config_path}', 
+            encoding='utf-8', 
+            timeout=30,
+            cwd=stop_dir  # Explicitly set working directory for stop_service
+        )
         process.expect(pexpect.EOF)
-        time.sleep(30)
+        time.sleep(CONTAINER_STOP_WAIT)
 
-@pytest.mark.parametrize('config_path', get_config_files())
-class TestAgentService:
-    """Test class that runs tests for all configs."""
-    config_path = None
-
-    @pytest.fixture(autouse=True)
-    def setup_test(self, config_path):
-        """Setup before each test method if it's the first test"""
-        TestAgentService.config_path = config_path
-        if not BaseTestService._setup_complete:
-            BaseTestService.config_path = config_path
-            BaseTestService.setup_class()
-        yield
-        # No teardown here - let the last test handle it
-
-    def test_01_health_check(self):
+    def test_health_check(self):
         """Test service health endpoint"""
-        BaseTestService.logger.info("Testing service health...")
-        status, metrics = check_service_health(BaseTestService.logger, self.config_path)
-        BaseTestService.logger.info(f"Health check metrics: {metrics}")
+        self.logger.info("Testing service health...")
+        status, metrics = check_service_health(self.logger, self.config_path)
+        self.logger.info(f"Health check metrics: {metrics}")
         assert status == True, f"Health check failed with metrics: {metrics}"
             
-    def test_02_shutdown_logs(self):
+    def test_shutdown_logs(self):
         """Test service shutdown logs"""
         try:
-            BaseTestService.logger.info("Testing shutdown logs...")
-            # First stop the service
-            BaseTestService.stop_service()
-            # Wait for containers to stop
+            self.logger.info("Testing shutdown logs...")
+            self.stop_service()
             time.sleep(CONTAINER_STOP_WAIT)
-            # Verify containers are stopped
-            client = docker.from_env()
             
+            client = docker.from_env()
             service_config = get_service_config(self.config_path)
             container_name = service_config["container_name"]
             
             containers = client.containers.list(filters={"name": container_name})
             assert len(containers) == 0, f"Containers with name {container_name} are still running"
-            # Now check the logs
-            assert check_shutdown_logs(BaseTestService.logger) == True, "Shutdown logs check failed"
+            assert check_shutdown_logs(self.logger, self.config_path) == True, "Shutdown logs check failed"
         finally:
-            if BaseTestService._setup_complete:
-                BaseTestService.teardown_class()
-                BaseTestService._setup_complete = False
+            if self._setup_complete:
+                self.teardown_class()
 
+class TestAgentService:
+    """Test class that runs tests for all configs."""
+    
+    @pytest.fixture(autouse=True)
+    def setup(self, request):
+        """Setup for each test case."""
+        config_path = request.param
 
+        # Create a temporary directory for stop_service
+        temp_dir = tempfile.TemporaryDirectory(prefix='operate_test_')
+        
+        # Copy necessary files to temp directory
+        shutil.copytree('.', temp_dir.name, dirs_exist_ok=True, 
+                        ignore=shutil.ignore_patterns('.git', '.pytest_cache', '__pycache__', 
+                                                   '*.pyc', 'logs', '*.log', '.env'))
+        
+        # First ensure any existing service is stopped (in temp directory)
+        try:
+            process = pexpect.spawn(
+                f'bash ./stop_service.sh {config_path}',
+                encoding='utf-8',
+                timeout=30,
+                cwd=temp_dir.name  # Run in temp directory
+            )
+            process.expect(pexpect.EOF)
+            time.sleep(CONTAINER_STOP_WAIT)
+        except Exception as e:
+            print(f"Warning: Error stopping previous service: {e}")
+        
+        self.test_class = type(
+            f'TestService_{Path(config_path).stem}',
+            (BaseTestService,),
+            {'config_path': config_path}
+        )
+        self.test_class.setup_class()
+        yield
+        if self.test_class._setup_complete:
+            self.test_class.teardown_class()
+            
+        # Clean up the temporary directory used for stop_service
+        try:
+            shutil.rmtree(temp_dir.name, ignore_errors=True)
+            temp_dir.cleanup()
+        except Exception as e:
+            print(f"Warning: Error cleaning up temporary directory: {e}")
+
+    @pytest.mark.parametrize('setup', get_config_files(), indirect=True,
+                           ids=lambda x: Path(x).stem)
+    def test_agent_full_suite(self, setup):
+        """Run all tests for each config."""
+        test_instance = self.test_class()
+        
+        # Run health check
+        test_instance.test_health_check()
+        
+        # Run shutdown logs test
+        test_instance.test_shutdown_logs()
 
 if __name__ == "__main__":
     pytest.main(["-v", __file__, "-s", "--log-cli-level=INFO"])
