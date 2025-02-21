@@ -123,3 +123,13 @@ jobs:
           echo "=== Logs for $container ==="
           docker logs $container
         done
+    - name: Upload test logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs
+        path: |
+          logs/
+          /logs/
+          .env
+        retention-days: 30    
