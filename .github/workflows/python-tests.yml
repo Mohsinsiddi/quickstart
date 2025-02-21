@@ -142,6 +142,6 @@ jobs:
       - id: find-agents
         run: |
           # Find all config files and extract agent names
-          NAMES=$(ls config/config_*.json | sed 's/config\/config_//' | sed 's/\.json//' | jq -R -s -c 'split("\n")[:-1]')
+          NAMES=$(ls configs/config_*.json | sed 's/configs\/config_//' | sed 's/\.json//' | jq -R -s -c 'split("\n")[:-1]')
           echo "Found agents: $NAMES"
           echo "names=$NAMES" >> $GITHUB_OUTPUT
