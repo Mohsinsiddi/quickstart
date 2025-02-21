@@ -88,6 +88,7 @@ jobs:
         poetry config virtualenvs.create true
         poetry config virtualenvs.in-project true
         poetry env use python3.10
+        poetry lock --no-update
         poetry install --no-interaction
 
     - name: Create .env file
