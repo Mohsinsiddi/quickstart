@@ -4,13 +4,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    needs: get-agents
+  setup:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        agent: ${{ fromJson(needs.get-agents.outputs.agent_names) }}
-      fail-fast: false
+    outputs:
+      agent_names: ${{ steps.find-agents.outputs.names }}
     env:
       GNOSIS_RPC_URL: ${{ secrets.GNOSIS_RPC_URL }}
       MODIUS_RPC_URL: ${{ secrets.MODIUS_RPC_URL }}
@@ -99,8 +96,48 @@ jobs:
         poetry env use python3.10
         poetry install --no-interaction
 
+    - name: Find agents
+      id: find-agents
+      run: |
+        NAMES=$(ls configs/config_*.json | sed 's/configs\/config_//' | sed 's/\.json//' | jq -R -s -c 'split("\n")[:-1]')
+        echo "Found agents: $NAMES"
+        echo "names=$NAMES" >> $GITHUB_OUTPUT
+
+    - name: Cache project dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.cache/poetry
+          .venv
+          poetry.lock
+        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+
+  test:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        agent: ${{ fromJson(needs.setup.outputs.agent_names) }}
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Restore cached dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.cache/poetry
+          .venv
+          poetry.lock
+        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+
     - name: Run test
-      run: poetry run pytest -v tests/test_run_service.py -s --log-cli-level=INFO -k ${{ matrix.agent }}
+      run: |
+        echo "Running tests for agent: ${{ matrix.agent }}"
+        poetry run pytest -v tests/test_run_service.py -s --log-cli-level=INFO -k ${{ matrix.agent }}
 
     - name: Debug container failure
       if: failure()
@@ -110,15 +147,3 @@ jobs:
           echo "=== Logs for $container ==="
           docker logs $container
         done
-
-  get-agents:
-    runs-on: ubuntu-latest
-    outputs:
-      agent_names: ${{ steps.find-agents.outputs.names }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: find-agents
-        run: |
-          NAMES=$(ls configs/config_*.json | sed 's/configs\/config_//' | sed 's/\.json//' | jq -R -s -c 'split("\n")[:-1]')
-          echo "Found agents: $NAMES"
-          echo "names=$NAMES" >> $GITHUB_OUTPUT
