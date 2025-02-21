@@ -123,6 +123,7 @@ jobs:
           echo "=== Logs for $container ==="
           docker logs $container
         done
+        
     - name: Upload test logs
       if: always()
       uses: actions/upload-artifact@v4
